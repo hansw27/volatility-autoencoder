@@ -1,0 +1,26 @@
+# WRDS Datasets & Results
+*.csv
+wrds_options_raw.csv
+wrds_stock_raw.csv
+strategy_results.csv
+
+# PyTorch Model Checkpoints
+*.pth
+*.pt
+optimal_autoencoder.pth
+
+# Python Cache and Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Jupyter Notebook Checkpoints (if you use them for EDA)
+.ipynb_checkpoints/
+
+# IDE and OS Files
+.vscode/
+.idea/
+.DS_Store
