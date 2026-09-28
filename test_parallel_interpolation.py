@@ -266,11 +266,11 @@ class TestMainParallelIntegration:
             for m in [0.9, 0.95, 1.0, 1.05, 1.1]:
                 for cp in ['C', 'P']:
                     opt_rows.append({
-                        'date': d, 'exdate': exdate, 'ticker': 'AAPL', 'cp_flag': cp,
+                        'date': d, 'exdate': exdate, 'ticker': 'AAPL', 'secid': 1001, 'cp_flag': cp,
                         'strike_price': round(100 * m) * 1000, 'volume': 50, 'open_interest': 200,
                         'impl_volatility': 0.2, 'best_bid': 1.0, 'best_offer': 1.1, 'delta': 0.3,
                     })
-        stock_rows = [{'date': d, 'ticker': 'AAPL', 'close': 100.0} for d in trading_days]
+        stock_rows = [{'date': d, 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0} for d in trading_days]
         pd.DataFrame(opt_rows).to_csv(tmp_path / 'wrds_options_raw.csv', index=False)
         pd.DataFrame(stock_rows).to_csv(tmp_path / 'wrds_stock_raw.csv', index=False)
 

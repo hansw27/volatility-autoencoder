@@ -26,6 +26,7 @@ def _base_option_row(**overrides):
         'date': '2026-01-05',
         'exdate': '2026-02-04',
         'ticker': 'AAPL',
+        'secid': 1001,
         'cp_flag': 'C',
         'strike_price': 100000,
         'volume': 100,
@@ -47,7 +48,7 @@ class TestBuildOptionsEnvironment:
 
     def test_valid_row_survives_and_is_scaled_correctly(self, tmp_path):
         options_rows = [_base_option_row()]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -60,7 +61,7 @@ class TestBuildOptionsEnvironment:
 
     def test_zero_volume_contract_filtered_out(self, tmp_path):
         options_rows = [_base_option_row(volume=0)]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -68,7 +69,7 @@ class TestBuildOptionsEnvironment:
 
     def test_zero_open_interest_filtered_out(self, tmp_path):
         options_rows = [_base_option_row(open_interest=0)]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -77,7 +78,7 @@ class TestBuildOptionsEnvironment:
     def test_crossed_market_filtered_out(self, tmp_path):
         # best_bid > best_offer: a crossed/broken quote
         options_rows = [_base_option_row(best_bid=3.00, best_offer=2.70)]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -88,7 +89,7 @@ class TestBuildOptionsEnvironment:
         # filter uses a strict '<' so it is dropped too. Documents actual
         # behavior rather than assuming it.
         options_rows = [_base_option_row(best_bid=2.70, best_offer=2.70)]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -96,7 +97,7 @@ class TestBuildOptionsEnvironment:
 
     def test_zero_bid_filtered_out(self, tmp_path):
         options_rows = [_base_option_row(best_bid=0.0)]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -105,7 +106,7 @@ class TestBuildOptionsEnvironment:
     def test_zero_dte_expiration_filtered_out(self, tmp_path):
         # exdate == date -> TTM == 0, must be dropped (TTM > 0 strict)
         options_rows = [_base_option_row(exdate='2026-01-05')]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -113,7 +114,7 @@ class TestBuildOptionsEnvironment:
 
     def test_missing_implied_vol_filtered_out(self, tmp_path):
         options_rows = [_base_option_row(impl_volatility=np.nan)]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -124,7 +125,7 @@ class TestBuildOptionsEnvironment:
         # produce NaN underlying_price and silently propagate into
         # Moneyness (NaN). Fixed: such rows are now filtered out.
         options_rows = [_base_option_row()]
-        stock_rows = [{'date': '2026-01-06', 'ticker': 'AAPL', 'close': 100.0}]  # wrong date
+        stock_rows = [{'date': '2026-01-06', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]  # wrong date
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
@@ -136,13 +137,42 @@ class TestBuildOptionsEnvironment:
             _base_option_row(cp_flag='P', volume=0),          # filtered: zero volume
             _base_option_row(cp_flag='C', strike_price=105000, best_bid=5.0, best_offer=1.0),  # crossed
         ]
-        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'close': 100.0}]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
         opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
 
         df = build_options_environment(opt_path, stock_path)
         assert len(df) == 1
         assert df['cp_flag'].iloc[0] == 'C'
         assert df['strike_price'].iloc[0] == pytest.approx(100.0)
+
+    def test_same_day_ticker_collision_between_two_secids_does_not_cross_contaminate(self, tmp_path):
+        # BUG (found via a real WRDS pull): ticker symbols get reused across
+        # unrelated companies over a multi-decade dataset. Two different
+        # secids traded as the same ticker on the same date (e.g. an
+        # unrelated 1990s-2000s company and the modern post-merger Linde
+        # both as 'LIN'). Joining on ('date', 'ticker') alone fans each
+        # option row out against every same-ticker stock row that day,
+        # pairing real contracts with a different company's stock price and
+        # producing nonsensical Moneyness. Joining on ('date', 'secid')
+        # instead must keep each option priced against its own company.
+        options_rows = [
+            _base_option_row(secid=1001, strike_price=25000),   # belongs to the $25 company
+            _base_option_row(secid=2002, strike_price=40000),   # belongs to the $40 company
+        ]
+        stock_rows = [
+            {'date': '2026-01-05', 'ticker': 'LIN', 'secid': 1001, 'close': 25.0},
+            {'date': '2026-01-05', 'ticker': 'LIN', 'secid': 2002, 'close': 40.0},
+        ]
+        for row in options_rows:
+            row['ticker'] = 'LIN'
+        opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
+
+        df = build_options_environment(opt_path, stock_path)
+
+        assert len(df) == 2, "Each option row must match exactly one stock row, not fan out against both"
+        moneyness_by_strike = dict(zip(df['strike_price'], df['Moneyness']))
+        assert moneyness_by_strike[25.0] == pytest.approx(1.0), "the $25 strike must be priced against the $25 company"
+        assert moneyness_by_strike[40.0] == pytest.approx(1.0), "the $40 strike must be priced against the $40 company"
 
 
 # ---------------------------------------------------------------------------

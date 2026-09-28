@@ -8,17 +8,17 @@ from scipy.spatial import QhullError
 # (optionid, issuer, index_flag, exercise_style, secid); loading them just
 # to discard them wastes memory, especially 'issuer' (free-text company
 # name, an object-dtype column -- among the most expensive per row).
-OPTIONS_USECOLS = ['date', 'exdate', 'ticker', 'cp_flag', 'strike_price',
+OPTIONS_USECOLS = ['date', 'exdate', 'ticker', 'secid', 'cp_flag', 'strike_price',
                     'volume', 'open_interest', 'impl_volatility', 'delta',
                     'best_bid', 'best_offer']
 OPTIONS_DTYPES = {
-    'ticker': 'category', 'cp_flag': 'category',
+    'ticker': 'category', 'cp_flag': 'category', 'secid': 'int32',
     'strike_price': 'float32', 'volume': 'int32', 'open_interest': 'int32',
     'impl_volatility': 'float32', 'delta': 'float32',
     'best_bid': 'float32', 'best_offer': 'float32',
 }
-STOCK_USECOLS = ['date', 'ticker', 'close']
-STOCK_DTYPES = {'ticker': 'category', 'close': 'float32'}
+STOCK_USECOLS = ['date', 'ticker', 'secid', 'close']
+STOCK_DTYPES = {'ticker': 'category', 'secid': 'int32', 'close': 'float32'}
 
 def build_options_environment(filepath, underlying_filepath):
     options_df = pd.read_csv(filepath, usecols=OPTIONS_USECOLS, dtype=OPTIONS_DTYPES)
@@ -28,8 +28,16 @@ def build_options_environment(filepath, underlying_filepath):
     options_df['exdate'] = pd.to_datetime(options_df['exdate'])
     stock_df['date'] = pd.to_datetime(stock_df['date'])
 
-    df = pd.merge(options_df, stock_df[['date', 'ticker', 'close']],
-                  on=['date', 'ticker'], how='left')
+    # Join on (date, secid) rather than (date, ticker). Ticker symbols get
+    # reused/shared across unrelated companies over a multi-decade dataset
+    # (e.g. two different securities both traded as 'LIN' on overlapping
+    # dates in the mid-2000s, one of them unrelated to the modern Linde
+    # plc) -- joining on ticker alone fans a single option row out against
+    # every same-ticker stock row that day, pairing real option contracts
+    # with a different company's stock price. secid is the actual unique
+    # security identifier and is populated in both files.
+    df = pd.merge(options_df, stock_df[['date', 'secid', 'close']],
+                  on=['date', 'secid'], how='left')
     df.rename(columns={'close': 'underlying_price'}, inplace=True)
     df = df[df['underlying_price'].notna()]
 

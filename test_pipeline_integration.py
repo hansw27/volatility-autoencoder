@@ -74,6 +74,7 @@ def _write_synthetic_wrds_dataset(tmp_path, seed=0, n_days=14, tickers=('AAPL', 
     # (Moneyness, TTM) point cloud collinear (constant TTM), which is
     # degenerate for 2D interpolation and unrealistic vs. real data.
     tenor_offsets_days = [30, 90]
+    secid_by_ticker = {t: 1000 + i for i, t in enumerate(tickers)}
 
     opt_rows = []
     for d in trading_days:
@@ -87,7 +88,7 @@ def _write_synthetic_wrds_dataset(tmp_path, seed=0, n_days=14, tickers=('AAPL', 
                         delta = (m - 0.7) * 0.9 if cp == 'C' else -(1.3 - m) * 0.9
                         premium = max(0.5, base_close * 0.05 * abs(1 - m) + rng.uniform(0, 0.3))
                         opt_rows.append({
-                            'date': d, 'exdate': exdate, 'ticker': t, 'cp_flag': cp,
+                            'date': d, 'exdate': exdate, 'ticker': t, 'secid': secid_by_ticker[t], 'cp_flag': cp,
                             'strike_price': strike * 1000, 'volume': 50, 'open_interest': 200,
                             'impl_volatility': 0.2 + 0.1 * abs(1 - m) + rng.uniform(0, 0.02),
                             'best_bid': premium, 'best_offer': premium + 0.1, 'delta': delta,
@@ -98,7 +99,7 @@ def _write_synthetic_wrds_dataset(tmp_path, seed=0, n_days=14, tickers=('AAPL', 
     for d in trading_days:
         for t in tickers:
             price[t] *= (1 + rng.uniform(-0.01, 0.01))
-            stock_rows.append({'date': d, 'ticker': t, 'close': price[t]})
+            stock_rows.append({'date': d, 'ticker': t, 'secid': secid_by_ticker[t], 'close': price[t]})
 
     pd.DataFrame(opt_rows).to_csv(tmp_path / 'wrds_options_raw.csv', index=False)
     pd.DataFrame(stock_rows).to_csv(tmp_path / 'wrds_stock_raw.csv', index=False)
