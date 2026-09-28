@@ -3,4 +3,5 @@ numpy
 scipy
 torch
 matplotlib
+PySide6
 pytest
