@@ -59,6 +59,22 @@ class TestBuildOptionsEnvironment:
         assert df['Premium'].iloc[0] == pytest.approx(2.60)
         assert df['TTM'].iloc[0] == pytest.approx(30 / 365.0, abs=1e-4)
 
+    def test_negative_close_price_is_taken_as_absolute_value(self, tmp_path):
+        # CRSP/WRDS convention: a negative close means no trade executed
+        # that day and the stored value is the bid-ask midpoint instead,
+        # sign-flipped to flag it as an estimate. The magnitude is still a
+        # real price -- Moneyness must be computed from abs(close), not
+        # left negative (which would also make Moneyness itself negative
+        # and nonsensical) or zeroed (which would divide-by-zero).
+        options_rows = [_base_option_row()]
+        stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': -100.0}]
+        opt_path, stock_path = _write_raw_csvs(tmp_path, options_rows, stock_rows)
+
+        df = build_options_environment(opt_path, stock_path)
+
+        assert len(df) == 1
+        assert df['Moneyness'].iloc[0] == pytest.approx(1.0), "Moneyness must use abs(close), not the raw negative price"
+
     def test_zero_volume_contract_filtered_out(self, tmp_path):
         options_rows = [_base_option_row(volume=0)]
         stock_rows = [{'date': '2026-01-05', 'ticker': 'AAPL', 'secid': 1001, 'close': 100.0}]
@@ -991,6 +1007,62 @@ class TestCalculatePerformanceMetrics:
         assert len(sector_summary) == 11
         assert set(sector_summary.index) == set(sectors)
         assert sector_summary['Trade Count'].sum() == len(df)
+
+    def test_default_capital_weighting_can_break_below_negative_100_pct_return(self):
+        # Documents the actual failure mode found on real data: a thin day
+        # (tiny pooled capital_allocated) with a loss larger than that
+        # day's own notional produces a daily return < -100%, flipping the
+        # sign of the compounded equity curve. This is the default
+        # (total_portfolio_capital=None) behavior, kept for backward
+        # compatibility -- not something to "fix" in this mode, just to
+        # document so the fixed-capital-base mode below can be shown to
+        # avoid it.
+        df = pd.DataFrame({
+            'date': pd.to_datetime(['2026-01-05']),
+            'ticker': ['AAPL'], 'sector': ['Tech'],
+            'net_pnl': [-500.0], 'capital_allocated': [100.0],  # loses 5x its own notional
+        })
+        summary, _ = calculate_performance_metrics(df)
+        assert summary['Total Cumulative Return (%)'] == pytest.approx(-500.0)  # ((1 + (-500/100)) - 1) * 100
+
+    def test_fixed_total_portfolio_capital_avoids_the_sign_flip(self):
+        # Same pathological single-trade loss as above, but normalized
+        # against a fixed, realistic total capital base instead of that
+        # day's own tiny notional -- the return should be a small, sane
+        # negative number, not a equity-curve-breaking -600%.
+        df = pd.DataFrame({
+            'date': pd.to_datetime(['2026-01-05']),
+            'ticker': ['AAPL'], 'sector': ['Tech'],
+            'net_pnl': [-500.0], 'capital_allocated': [100.0],
+        })
+        summary, _ = calculate_performance_metrics(df, total_portfolio_capital=1_000_000.0)
+        expected_return_pct = (-500.0 / 1_000_000.0) * 100
+        assert summary['Total Cumulative Return (%)'] == pytest.approx(expected_return_pct)
+        assert summary['Total Cumulative Return (%)'] > -1.0  # sane, small magnitude
+
+    def test_fixed_total_portfolio_capital_applies_to_sector_breakdown_too(self):
+        df = pd.DataFrame({
+            'date': pd.to_datetime(['2026-01-05', '2026-01-06']),
+            'ticker': ['AAPL', 'AAPL'], 'sector': ['Tech', 'Tech'],
+            'net_pnl': [-500.0, 300.0], 'capital_allocated': [100.0, 100.0],
+        })
+        _, sector_summary = calculate_performance_metrics(df, total_portfolio_capital=1_000_000.0)
+        # With a huge fixed capital base, daily returns are tiny and stable
+        # enough that Sharpe is computable (finite), unlike the default
+        # mode where a -500% single-day return would dominate the series.
+        assert np.isfinite(sector_summary.loc['Tech', 'Sharpe Ratio'])
+
+    def test_total_portfolio_capital_none_matches_original_default_behavior(self):
+        # Regression guard: omitting the new parameter must reproduce the
+        # exact numbers the function produced before it existed.
+        df = pd.DataFrame({
+            'date': pd.to_datetime(['2026-01-05', '2026-01-06', '2026-01-07']),
+            'ticker': ['AAPL'] * 3, 'sector': ['Tech'] * 3,
+            'net_pnl': [100.0, -50.0, 80.0], 'capital_allocated': [1000.0] * 3,
+        })
+        default_summary, _ = calculate_performance_metrics(df)
+        explicit_none_summary, _ = calculate_performance_metrics(df, total_portfolio_capital=None)
+        assert default_summary == explicit_none_summary
 
 
 if __name__ == '__main__':

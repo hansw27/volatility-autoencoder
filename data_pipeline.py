@@ -28,6 +28,14 @@ def build_options_environment(filepath, underlying_filepath):
     options_df['exdate'] = pd.to_datetime(options_df['exdate'])
     stock_df['date'] = pd.to_datetime(stock_df['date'])
 
+    # CRSP/WRDS convention: a negative close price means no trade actually
+    # executed that day, and the stored value is the bid-ask midpoint
+    # instead, flagged with a negative sign to mark it as an estimate
+    # rather than a traded price. The magnitude is still a legitimate price
+    # -- take the absolute value rather than dropping or zeroing these rows
+    # (zeroing would divide-by-zero into Moneyness below).
+    stock_df['close'] = stock_df['close'].abs()
+
     # Join on (date, secid) rather than (date, ticker). Ticker symbols get
     # reused/shared across unrelated companies over a multi-decade dataset
     # (e.g. two different securities both traded as 'LIN' on overlapping

@@ -153,7 +153,7 @@ def calculate_5_day_straddle_pnl(signal_df, option_data, stock_data, hold_days=5
 
     return pd.DataFrame(trade_results)
 
-def calculate_performance_metrics(trade_results, risk_free_rate=0.04):
+def calculate_performance_metrics(trade_results, risk_free_rate=0.04, total_portfolio_capital=None):
     """
     Vectorized performance tear sheet for a completed set of trades.
 
@@ -164,13 +164,27 @@ def calculate_performance_metrics(trade_results, risk_free_rate=0.04):
         net_pnl           -- dollar PnL of the trade
         capital_allocated -- capital at risk for the trade (straddle + hedge)
 
-    A day's portfolio return is computed as that day's total PnL over that
-    day's total capital_allocated (capital-weighted, not a plain average
-    of per-trade returns), since multiple trades can liquidate on the same
-    date. This is an approximation forced by the schema: with only a
-    liquidation date and no separate entry-date capital-lockup column,
-    return recognition happens on the exit day rather than as true
-    day-by-day mark-to-market over the hold period.
+    total_portfolio_capital: if given, every day's return is computed as
+    that day's dollar PnL divided by this fixed capital base, instead of
+    dividing by that day's own pooled capital_allocated. This matters
+    because capital_allocated is a notional exposure estimate, not a hard
+    loss cap -- a delta hedge can slip badly enough on a gap day that
+    realized losses exceed the notional tied up in that day's trades,
+    especially on a day with only one or two low-notional trades (small
+    denominator). That produces a daily return below -100%, which flips
+    the sign of the compounding equity curve and makes Total Cumulative
+    Return / Max Drawdown meaningless from that day forward. A fixed
+    capital base (reflecting a real account's total capital, not just
+    what happened to be in that specific day's trades) avoids this. If
+    None (default), uses each day's own pooled capital_allocated, which
+    can still hit that breakdown.
+
+    A day's portfolio return pools every trade closing that day (capital-
+    weighted when total_portfolio_capital is None, since multiple trades
+    can liquidate on the same date). Return recognition happens on the
+    exit day, not as true day-by-day mark-to-market over the hold period
+    -- an approximation forced by the schema (only a liquidation date is
+    available, no separate entry-date capital-lockup column).
 
     Returns (summary, sector_summary):
         summary: dict with Total Cumulative Return (%), Win Rate (%),
@@ -188,10 +202,17 @@ def calculate_performance_metrics(trade_results, risk_free_rate=0.04):
             return np.nan
         return (mean_return - daily_rf) / std_return * np.sqrt(252)
 
+    def _pooled_daily_returns(group_keys):
+        daily = df.groupby(group_keys).agg(pnl=('net_pnl', 'sum'), capital=('capital_allocated', 'sum'))
+        if total_portfolio_capital is None:
+            daily = daily[daily['capital'] != 0]
+            returns = daily['pnl'] / daily['capital']
+        else:
+            returns = daily['pnl'] / total_portfolio_capital
+        return returns.sort_index()
+
     # --- Portfolio-level daily returns, equity curve, and drawdown -------
-    daily = df.groupby('date').agg(pnl=('net_pnl', 'sum'), capital=('capital_allocated', 'sum'))
-    daily = daily[daily['capital'] != 0].sort_index()
-    daily_returns = daily['pnl'] / daily['capital']
+    daily_returns = _pooled_daily_returns('date')
 
     equity_curve = (1.0 + daily_returns).cumprod()
     running_max = equity_curve.cummax()
@@ -210,9 +231,7 @@ def calculate_performance_metrics(trade_results, risk_free_rate=0.04):
     }
 
     # --- Sector breakdown, fully vectorized (no explicit per-sector loop) --
-    sector_daily = df.groupby(['sector', 'date']).agg(pnl=('net_pnl', 'sum'), capital=('capital_allocated', 'sum'))
-    sector_daily = sector_daily[sector_daily['capital'] != 0]
-    sector_daily_returns = sector_daily['pnl'] / sector_daily['capital']
+    sector_daily_returns = _pooled_daily_returns(['sector', 'date'])
 
     sector_stats = sector_daily_returns.groupby(level='sector').agg(mean='mean', std='std', n='count')
     sector_sharpe = pd.Series(
